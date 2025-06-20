@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Parkonic Voice Bot</title>
+</head>
+<body>
+    <button onclick="startRecording()">Help</button>
+    <audio id="audioResponse" controls autoplay></audio>
+
+    <script>
+        async function startRecording() {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.start();
+
+            const audioChunks = [];
+            mediaRecorder.addEventListener("dataavailable", event => {
+                audioChunks.push(event.data);
+            });
+
+            mediaRecorder.addEventListener("stop", async () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'input.webm');
+
+                const response = await fetch('/voicebot', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const audioBlobResponse = await response.blob();
+                document.getElementById('audioResponse').src = URL.createObjectURL(audioBlobResponse);
+            });
+
+            setTimeout(() => mediaRecorder.stop(), 4000);  // Records 4 seconds
+        }
+    </script>
+</body>
+</html>
