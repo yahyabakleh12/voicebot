@@ -4,36 +4,42 @@
     <title>Parkonic Voice Bot</title>
 </head>
 <body>
-    <button onclick="startRecording()">Help</button>
+    <button id="recordButton" onclick="toggleRecording()">Record</button>
     <audio id="audioResponse" controls autoplay></audio>
+    <div id="conversation"></div>
 
     <script>
-        async function startRecording() {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
-            mediaRecorder.start();
+        const conversationId = localStorage.getItem('conversationId') || crypto.randomUUID();
+        localStorage.setItem('conversationId', conversationId);
+        let mediaRecorder;
+        let audioChunks = [];
 
-            const audioChunks = [];
-            mediaRecorder.addEventListener("dataavailable", event => {
-                audioChunks.push(event.data);
+        async function toggleRecording() {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.addEventListener('dataavailable', e => audioChunks.push(e.data));
+                mediaRecorder.addEventListener('stop', sendAudio);
+                audioChunks = [];
+                mediaRecorder.start();
+                document.getElementById('recordButton').innerText = 'Stop';
+            } else {
+                mediaRecorder.stop();
+                document.getElementById('recordButton').innerText = 'Record';
+            }
+        }
+
+        async function sendAudio() {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'input.webm');
+            const response = await fetch(`/voicebot/${conversationId}`, {
+                method: 'POST',
+                body: formData
             });
-
-            mediaRecorder.addEventListener("stop", async () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-
-                const formData = new FormData();
-                formData.append('audio', audioBlob, 'input.webm');
-
-                const response = await fetch('/voicebot', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const audioBlobResponse = await response.blob();
-                document.getElementById('audioResponse').src = URL.createObjectURL(audioBlobResponse);
-            });
-
-            setTimeout(() => mediaRecorder.stop(), 4000);  // Records 4 seconds
+            const data = await response.json();
+            document.getElementById('audioResponse').src = `data:audio/mpeg;base64,${data.audio}`;
+            document.getElementById('conversation').innerHTML += `<p><b>You:</b> ${data.user}</p><p><b>Bot:</b> ${data.text}</p>`;
         }
     </script>
 </body>
