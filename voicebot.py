@@ -4,10 +4,14 @@ import openai
 import whisper
 import os
 import tempfile
+import whisper
+from dotenv import load_dotenv
 
+load_dotenv()
+print(whisper.__file__)
 app = FastAPI()
 
-openai.api_key = "YOUR_OPENAI_API_KEY"
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 whisper_model = whisper.load_model("base")
 
 @app.post("/voicebot")
