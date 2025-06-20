@@ -1,21 +1,21 @@
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
 import openai
 import whisper
 import os
 import tempfile
-import whisper
+import base64
 from dotenv import load_dotenv
 
 load_dotenv()
-print(whisper.__file__)
 app = FastAPI()
 
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 whisper_model = whisper.load_model("base")
+conversations = {}
 
-@app.post("/voicebot")
-async def voicebot(audio: UploadFile = File(...)):
+@app.post("/voicebot/{conversation_id}")
+async def voicebot(conversation_id: str, audio: UploadFile = File(...)):
     # Save the audio temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
         tmp.write(await audio.read())
@@ -28,16 +28,18 @@ async def voicebot(audio: UploadFile = File(...)):
     # Remove temporary file
     os.unlink(audio_filepath)
 
-    # Generate response using OpenAI GPT
+    # Prepare conversation history
     system_prompt = "You are Parkonic's helpful assistant bot."
+    history = conversations.setdefault(conversation_id, [{"role": "system", "content": system_prompt}])
+    history.append({"role": "user", "content": user_message})
+
+    # Generate response using OpenAI GPT
     completion = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
+        messages=history
     )
     bot_response_text = completion.choices[0].message.content
+    history.append({"role": "assistant", "content": bot_response_text})
 
     # Convert response text to speech using OpenAI TTS
     tts_response = openai.audio.speech.create(
@@ -50,4 +52,8 @@ async def voicebot(audio: UploadFile = File(...)):
     audio_response_file.write(tts_response.content)
     audio_response_file.seek(0)
 
-    return StreamingResponse(open(audio_response_file.name, "rb"), media_type="audio/mpeg")
+    audio_bytes = audio_response_file.read()
+    encoded_audio = base64.b64encode(audio_bytes).decode("utf-8")
+    os.unlink(audio_response_file.name)
+
+    return JSONResponse({"text": bot_response_text, "audio": encoded_audio, "user": user_message})
